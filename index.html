@@ -11,6 +11,17 @@
 </head>
 <body>
   <div id="root"></div>
-  <script type="text/babel" src="app.js"></script>
+  <script type="text/babel" src="https://esm.sh/lucide-react@0.263.1"></script>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+    const { Plus, Trash2, RefreshCw, Download, Upload, Save } = window.lucide;
+
+    function PokemonCardTracker() {
+      // PASTE THE COMPONENT CODE FROM THE ARTIFACT HERE
+      // (Everything inside the export default function)
+    }
+
+    ReactDOM.render(<PokemonCardTracker />, document.getElementById('root'));
+  </script>
 </body>
 </html>
