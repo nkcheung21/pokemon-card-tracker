@@ -28,6 +28,8 @@
       const [loading, setLoading] = useState({});
       const [searchResults, setSearchResults] = useState({});
       const [showDropdown, setShowDropdown] = useState({});
+      const [setDropdowns, setSetDropdowns] = useState({});
+      const [availableSets, setAvailableSets] = useState({});
       const dropdownRefs = useRef({});
 
       useEffect(() => {
@@ -67,6 +69,7 @@
           Object.keys(dropdownRefs.current).forEach(id => {
             if (dropdownRefs.current[id] && !dropdownRefs.current[id].contains(event.target)) {
               setShowDropdown(prev => ({ ...prev, [id]: false }));
+              setSetDropdowns(prev => ({ ...prev, [id]: false }));
             }
           });
         };
@@ -111,12 +114,8 @@
         }
 
         try {
-          const url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(query)}*&pageSize=50&orderBy=name`;
-          const response = await fetch(url, {
-            headers: {
-              'X-Api-Key': '' // Add your API key here if needed
-            }
-          });
+          const url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(query)}*&pageSize=20&orderBy=name`;
+          const response = await fetch(url);
           
           if (!response.ok) {
             throw new Error(`API error: ${response.status}`);
@@ -127,6 +126,10 @@
           if (data.data) {
             setSearchResults(prev => ({ ...prev, [id]: data.data }));
             setShowDropdown(prev => ({ ...prev, [id]: true }));
+            
+            // Extract unique sets from search results
+            const uniqueSets = [...new Set(data.data.map(card => card.set.name))];
+            setAvailableSets(prev => ({ ...prev, [id]: uniqueSets }));
           }
         } catch (error) {
           console.error('Search error:', error);
@@ -140,9 +143,77 @@
         updateCard(cardId, 'set', selectedCard.set.name || '');
         setShowDropdown(prev => ({ ...prev, [cardId]: false }));
         
-        // Fetch prices for the selected card
-        if (selectedCard.tcgplayer?.url) {
-          fetchPrices(cardId, selectedCard.name, selectedCard.number, selectedCard.set.name);
+        // Clear card number dropdown
+        updateCard(cardId, 'cardNumber', '');
+        
+        // Fetch all versions of this card for the dropdowns
+        fetchCardVersions(cardId, selectedCard.name);
+      };
+
+      const fetchCardVersions = async (id, pokemonName) => {
+        try {
+          const url = `https://api.pokemontcg.io/v2/cards?q=name:${encodeURIComponent(pokemonName)}&pageSize=100`;
+          const response = await fetch(url);
+          const data = await response.json();
+
+          if (data.data) {
+            // Group cards by set and number
+            const sets = {};
+            data.data.forEach(card => {
+              const setName = card.set.name;
+              if (!sets[setName]) {
+                sets[setName] = new Set();
+              }
+              sets[setName].add(card.number);
+            });
+
+            // Convert to arrays for display
+            const setOptions = Object.keys(sets);
+            setAvailableSets(prev => ({ ...prev, [id]: setOptions }));
+            
+            // Store card numbers for each set
+            const allCards = {};
+            data.data.forEach(card => {
+              if (!allCards[card.set.name]) {
+                allCards[card.set.name] = [];
+              }
+              allCards[card.set.name].push({
+                number: card.number,
+                id: card.id,
+                name: card.name
+              });
+            });
+            
+            // Store in a ref or state for access when set is selected
+            window.cardDataCache = window.cardDataCache || {};
+            window.cardDataCache[id] = allCards;
+          }
+        } catch (error) {
+          console.error('Error fetching card versions:', error);
+        }
+      };
+
+      const handleSetSelect = (cardId, setName) => {
+        updateCard(cardId, 'set', setName);
+        setSetDropdowns(prev => ({ ...prev, [cardId]: false }));
+        
+        // Clear card number when set changes
+        updateCard(cardId, 'cardNumber', '');
+        
+        // Fetch prices for this card in the selected set
+        const card = cards.find(c => c.id === cardId);
+        if (card.pokemon && setName) {
+          fetchPrices(cardId, card.pokemon, '', setName);
+        }
+      };
+
+      const handleCardNumberSelect = (cardId, cardNumber) => {
+        updateCard(cardId, 'cardNumber', cardNumber);
+        
+        // Fetch prices for specific card number
+        const card = cards.find(c => c.id === cardId);
+        if (card.pokemon && card.set) {
+          fetchPrices(cardId, card.pokemon, cardNumber, card.set);
         }
       };
 
@@ -153,16 +224,14 @@
         const set = setName || card.set;
 
         if (!pokemonName || !set) {
-          alert('Please select a card first');
+          alert('Please select a Pokemon and Set first');
           return;
         }
 
         setLoading(prev => ({ ...prev, [id]: true }));
 
         try {
-          // Clean up the search query
-          const cleanName = pokemonName.replace(/[^\w\s]/gi, '');
-          const query = `name:"${cleanName}" set.name:"${set}"${cardNum ? ` number:${cardNum}` : ''}`;
+          const query = `name:"${pokemonName}" set.name:"${set}"${cardNum ? ` number:${cardNum}` : ''}`;
           const url = `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(query)}`;
           
           const response = await fetch(url);
@@ -246,7 +315,6 @@
         reader.onerror = () => alert('Error reading file');
         reader.readAsText(file);
         
-        // Reset file input
         event.target.value = '';
       };
 
@@ -308,7 +376,7 @@
 
               <div className="mb-4 p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm text-gray-700">
-                  <strong>How to use:</strong> Type Pokemon name → Select from dropdown → Prices auto-update. Your data auto-saves to browser and you can save/load JSON files for backup.
+                  <strong>How to use:</strong> Type Pokemon name → Select from dropdown → Choose Set → Choose Card # → Prices auto-update.
                 </p>
               </div>
 
@@ -365,20 +433,56 @@
                           </div>
                         </td>
                         <td className="p-3">
-                          <input 
-                            type="text" 
-                            value={card.cardNumber} 
-                            onChange={(e) => updateCard(card.id, 'cardNumber', e.target.value)}
-                            className="w-24 px-3 py-2 border border-gray-300 rounded-lg" 
-                          />
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={card.cardNumber}
+                              onChange={(e) => updateCard(card.id, 'cardNumber', e.target.value)}
+                              onClick={() => {
+                                // When clicking on card number, show available card numbers for selected set
+                                if (card.pokemon && card.set && window.cardDataCache?.[card.id]?.[card.set]) {
+                                  // Store available card numbers temporarily
+                                  const cardNumbers = window.cardDataCache[card.id][card.set]
+                                    .map(c => c.number)
+                                    .filter((v, i, a) => a.indexOf(v) === i)
+                                    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                                  setAvailableSets(prev => ({ ...prev, [`cardNumbers_${card.id}`]: cardNumbers }));
+                                }
+                              }}
+                              className="w-24 px-3 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50"
+                              readOnly
+                            />
+                          </div>
                         </td>
                         <td className="p-3">
-                          <input 
-                            type="text" 
-                            value={card.set} 
-                            onChange={(e) => updateCard(card.id, 'set', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg" 
-                          />
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={card.set}
+                              onChange={(e) => updateCard(card.id, 'set', e.target.value)}
+                              onClick={() => {
+                                // Show set dropdown when clicking on set field
+                                if (availableSets[card.id]?.length > 0) {
+                                  setSetDropdowns(prev => ({ ...prev, [card.id]: true }));
+                                }
+                              }}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50"
+                              readOnly
+                            />
+                            {setDropdowns[card.id] && availableSets[card.id]?.length > 0 && (
+                              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                                {availableSets[card.id].map((setName, idx) => (
+                                  <div
+                                    key={`${setName}-${idx}`}
+                                    onClick={() => handleSetSelect(card.id, setName)}
+                                    className="p-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                                  >
+                                    <div className="font-medium text-gray-800">{setName}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3">
                           <input 
@@ -401,7 +505,7 @@
                         <td className="p-3">
                           <div className="flex gap-2">
                             <button 
-                              onClick={() => fetchPrices(card.id)} 
+                              onClick={() => fetchPrices(card.id, card.pokemon, card.cardNumber, card.set)} 
                               disabled={loading[card.id] || !card.pokemon || !card.set}
                               className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed" 
                               title="Refresh Prices"
