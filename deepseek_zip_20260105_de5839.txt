@@ -1,0 +1,28 @@
+pokemon-card-tracker.zip/
+├── index.html
+├── app.js
+├── styles.css
+├── manifest.json
+├── service-worker.js
+├── README.md
+├── components/
+│   ├── CardRow.js
+│   ├── StatsPanel.js
+│   └── Dropdown.js
+├── utils/
+│   ├── api.js
+│   ├── cache.js
+│   ├── export.js
+│   └── icons.js
+├── assets/
+│   ├── icons/
+│   │   ├── pokeball.svg
+│   │   ├── search.svg
+│   │   ├── plus.svg
+│   │   ├── trash.svg
+│   │   ├── refresh.svg
+│   │   ├── download.svg
+│   │   ├── upload.svg
+│   │   └── database.svg
+│   └── background.jpg
+└── LICENSE
